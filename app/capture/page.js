@@ -104,8 +104,9 @@ export default function CapturePage() {
   const gps = gpsConfig[gpsStatus];
 
   return (
-    <div className="viewfinder">
-      {/* Camera */}
+    <div id="ar-ui-overlay" className="absolute inset-0 overflow-hidden bg-transparent">
+      <div className="viewfinder">
+        {/* Camera */}
       <CameraView
         ref={cameraRef}
         onReady={handleCameraReady}
@@ -175,6 +176,7 @@ export default function CapturePage() {
           <div className="absolute right-6 bottom-10 text-right">
             <p className="text-sm font-bold text-white/80">{currentStep + 1}/4</p>
             <p className="text-[10px] text-white/40">{CAPTURE_STEPS[currentStep]?.shortLabel}</p>
+          </div>
           </div>
         </div>
       </div>

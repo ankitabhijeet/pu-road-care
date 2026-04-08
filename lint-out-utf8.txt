@@ -1,0 +1,77 @@
+﻿
+C:\Users\ankit\.gemini\antigravity\scratch\pu-road-care\app\dashboard\page.js
+  27:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  25 |
+  26 |   useEffect(() => {
+> 27 |     loadData();
+     |     ^^^^^^^^ Avoid calling setState() directly within an effect
+  28 |   }, []);
+  29 |
+  30 |   const handleDeleted = (id) => {  react-hooks/set-state-in-effect
+
+C:\Users\ankit\.gemini\antigravity\scratch\pu-road-care\app\review\page.js
+  20:7  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  18 |     const data = window.__puRoadCareCaptures;
+  19 |     if (data && data.length === 4) {
+> 20 |       setCaptures(data);
+     |       ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  21 |     } else {
+  22 |       // Try to recover from sessionStorage for display
+  23 |       try {  react-hooks/set-state-in-effect
+
+C:\Users\ankit\.gemini\antigravity\scratch\pu-road-care\components\CameraView.jsx
+  95:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  93 |
+  94 |   useEffect(() => {
+> 95 |     startCamera();
+     |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  96 |     startWebXR();
+  97 |
+  98 |     return () => {  react-hooks/set-state-in-effect
+
+C:\Users\ankit\.gemini\antigravity\scratch\pu-road-care\components\PermissionsGate.jsx
+   58:38  error    Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. The inferred dependencies did not match the manually specified dependencies, which could cause the value to change more or less frequently than expected. The inferred dependency was `hasWebXR`, but the source dependencies were [router]. Inferred different dependency than source.
+
+   56 |   }, []);
+   57 |
+>  58 |   const handleGrantAll = useCallback(async () => {
+      |                                      ^^^^^^^^^^^^^
+>  59 |     setIsRequesting(true);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+>  60 |     setError(null);
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 101 |     setIsRequesting(false);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 102 |   }, [router]);
+      | ^^^^ Could not preserve existing manual memoization
+  103 |
+  104 |   const allGranted = Object.values(permissions).every(
+  105 |     (v) => v === 'granted' || v === 'not_required'  react-hooks/preserve-manual-memoization
+  102:6   warning  React Hook useCallback has a missing dependency: 'hasWebXR'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              react-hooks/exhaustive-deps
+
+Γ£û 5 problems (4 errors, 1 warning)
+

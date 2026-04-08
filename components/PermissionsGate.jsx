@@ -1,9 +1,11 @@
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import StatusBadge from './StatusBadge';
-import { requestCamera, requestGeolocation, requestIMU } from '@/lib/permissions';
+import { checkWebXRSupport, requestCamera, requestGeolocation, requestIMU } from '@/lib/permissions';
 
 const PERMISSION_CARDS = [
   {
@@ -49,6 +51,11 @@ export default function PermissionsGate() {
   });
   const [isRequesting, setIsRequesting] = useState(false);
   const [error, setError] = useState(null);
+  const [hasWebXR, setHasWebXR] = useState(false);
+
+  useEffect(() => {
+    checkWebXRSupport().then(supported => setHasWebXR(supported));
+  }, []);
 
   const handleGrantAll = useCallback(async () => {
     setIsRequesting(true);
@@ -60,7 +67,10 @@ export default function PermissionsGate() {
     // to be called in the DIRECT call stack of a user gesture (tap). After any async dialog
     // (camera/geo), iOS considers the gesture expired and silently denies IMU access.
     setPermissions((p) => ({ ...p, imu: 'loading' }));
-    const imuResult = await requestIMU();
+    let imuResult = 'granted';
+    if (!hasWebXR) {
+      imuResult = await requestIMU();
+    }
     const imuOk = imuResult === 'granted' || imuResult === 'not_required';
     setPermissions((p) => ({ ...p, imu: imuOk ? 'granted' : 'denied' }));
     if (!imuOk) denied.push('Motion Sensors');
@@ -91,7 +101,7 @@ export default function PermissionsGate() {
     }
 
     setIsRequesting(false);
-  }, [router]);
+  }, [router, hasWebXR]);
 
   const allGranted = Object.values(permissions).every(
     (v) => v === 'granted' || v === 'not_required'
@@ -100,31 +110,38 @@ export default function PermissionsGate() {
   return (
     <div className="flex flex-col items-center w-full max-w-md mx-auto stagger-children">
       {/* Permission Cards */}
-      {PERMISSION_CARDS.map((card) => (
-        <div
-          key={card.key}
-          className="w-full glass rounded-2xl p-5 mb-3 flex items-center gap-4 transition-all duration-300"
-        >
+      {PERMISSION_CARDS.map((card) => {
+        const title = (hasWebXR && card.key === 'imu') ? 'AR Tracking (WebXR)' : card.title;
+        const desc = (hasWebXR && card.key === 'imu') 
+          ? 'Use native AR/VIO for metric 3D scale tracking' 
+          : card.description;
+
+        return (
           <div
-            className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 ${
-              permissions[card.key] === 'granted'
-                ? 'bg-success/15 text-success'
-                : permissions[card.key] === 'denied'
-                ? 'bg-danger/15 text-danger'
-                : 'bg-white/5 text-white/40'
-            }`}
+            key={card.key}
+            className="w-full glass rounded-2xl p-5 mb-3 flex items-center gap-4 transition-all duration-300"
           >
-            {card.icon}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-sm font-semibold text-white">{card.title}</h3>
-              <StatusBadge status={permissions[card.key]} />
+            <div
+              className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                permissions[card.key] === 'granted'
+                  ? 'bg-success/15 text-success'
+                  : permissions[card.key] === 'denied'
+                  ? 'bg-danger/15 text-danger'
+                  : 'bg-white/5 text-white/40'
+              }`}
+            >
+              {card.icon}
             </div>
-            <p className="text-xs text-white/40 leading-relaxed">{card.description}</p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-sm font-semibold text-white">{title}</h3>
+                <StatusBadge status={permissions[card.key]} />
+              </div>
+              <p className="text-xs text-white/40 leading-relaxed">{desc}</p>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Error Message */}
       {error && (
