@@ -54,44 +54,39 @@ export default function PermissionsGate() {
     setIsRequesting(true);
     setError(null);
 
+    const denied = [];
+
+    // ⚠️ IMU MUST be requested FIRST — iOS Safari requires DeviceOrientationEvent.requestPermission()
+    // to be called in the DIRECT call stack of a user gesture (tap). After any async dialog
+    // (camera/geo), iOS considers the gesture expired and silently denies IMU access.
+    setPermissions((p) => ({ ...p, imu: 'loading' }));
+    const imuResult = await requestIMU();
+    const imuOk = imuResult === 'granted' || imuResult === 'not_required';
+    setPermissions((p) => ({ ...p, imu: imuOk ? 'granted' : 'denied' }));
+    if (!imuOk) denied.push('Motion Sensors');
+
     // Camera
     setPermissions((p) => ({ ...p, camera: 'loading' }));
     const camResult = await requestCamera();
-    setPermissions((p) => ({
-      ...p,
-      camera: camResult === 'granted' ? 'granted' : 'denied',
-    }));
+    const camOk = camResult === 'granted';
+    setPermissions((p) => ({ ...p, camera: camOk ? 'granted' : 'denied' }));
+    if (!camOk) denied.push('Camera');
 
     // Geolocation
     setPermissions((p) => ({ ...p, geolocation: 'loading' }));
     const geoResult = await requestGeolocation();
-    setPermissions((p) => ({
-      ...p,
-      geolocation: geoResult === 'granted' ? 'granted' : 'denied',
-    }));
+    const geoOk = geoResult === 'granted';
+    setPermissions((p) => ({ ...p, geolocation: geoOk ? 'granted' : 'denied' }));
+    if (!geoOk) denied.push('Location');
 
-    // IMU (must be in user gesture context — we're in a click handler, so this is valid on iOS)
-    setPermissions((p) => ({ ...p, imu: 'loading' }));
-    const imuResult = await requestIMU();
-    setPermissions((p) => ({
-      ...p,
-      imu: imuResult === 'granted' || imuResult === 'not_required' ? 'granted' : 'denied',
-    }));
-
-    // Check results
-    const allGranted =
-      (camResult === 'granted') &&
-      (geoResult === 'granted') &&
-      (imuResult === 'granted' || imuResult === 'not_required');
-
-    if (allGranted) {
+    if (denied.length === 0) {
       // Brief delay so user sees all green, then navigate
       setTimeout(() => {
         router.push('/capture');
       }, 600);
     } else {
       setError(
-        'Some permissions were denied. Please enable them in your browser/device settings and try again.'
+        `Permission denied for: ${denied.join(', ')}. Please enable in your browser settings and tap the button again.`
       );
     }
 
