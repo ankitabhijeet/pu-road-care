@@ -13,6 +13,8 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
   const xrSessionRef = useRef(null);
   const rafIdRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
+  const [xrRequested, setXrRequested] = useState(false);
+  const [localWebXRSupport, setLocalWebXRSupport] = useState(false);
 
   useImperativeHandle(ref, () => ({
     getVideoElement: () => videoRef.current,
@@ -94,8 +96,8 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
   }, [onReady, onError]);
 
   useEffect(() => {
+    checkWebXRSupport().then(setLocalWebXRSupport);
     startCamera();
-    startWebXR();
 
     return () => {
       if (streamRef.current) {
@@ -105,7 +107,7 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
         xrSessionRef.current.end().catch(console.error);
       }
     };
-  }, [startCamera, startWebXR]);
+  }, [startCamera]);
 
   return (
     <>
@@ -125,6 +127,27 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 100 8v4a8 8 0 01-8-8z" />
             </svg>
             <p className="text-sm text-white/50">Starting camera...</p>
+          </div>
+        </div>
+      )}
+
+      {/* WebXR User Gesture Overlay */}
+      {isReady && localWebXRSupport && !xrRequested && (
+        <div 
+          className="absolute inset-0 z-40 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center"
+          onClick={() => {
+            setXrRequested(true);
+            startWebXR();
+          }}
+        >
+          <div className="bg-white/10 p-6 rounded-3xl border border-white/20 glass max-w-sm">
+            <svg className="w-12 h-12 text-accent-light mx-auto mb-4 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59" />
+            </svg>
+            <h3 className="text-xl font-bold text-white mb-2">Tap to Activate AR Tracker</h3>
+            <p className="text-sm text-white/70">
+              WebXR requires a tap to begin rendering the scale-accurate tracking matrix for 3D reconstruction.
+            </p>
           </div>
         </div>
       )}
