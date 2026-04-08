@@ -134,26 +134,7 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
         </div>
       )}
 
-      {/* WebXR User Gesture Overlay */}
-      {isReady && localWebXRSupport && !xrRequested && (
-        <div 
-          className="absolute inset-0 z-40 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center"
-          onClick={() => {
-            setXrRequested(true);
-            startWebXR();
-          }}
-        >
-          <div className="bg-white/10 p-6 rounded-3xl border border-white/20 glass max-w-sm">
-            <svg className="w-12 h-12 text-accent-light mx-auto mb-4 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59" />
-            </svg>
-            <h3 className="text-xl font-bold text-white mb-2">Tap to Activate AR Tracker</h3>
-            <p className="text-sm text-white/70">
-              WebXR requires a tap to begin rendering the scale-accurate tracking matrix for 3D reconstruction.
-            </p>
-          </div>
-        </div>
-      )}
+      {/* WebXR was here, but removed due to camera hardware locking on iOS WebXR Viewers */}
     </>
   );
 });
