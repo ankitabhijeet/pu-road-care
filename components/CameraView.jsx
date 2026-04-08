@@ -14,6 +14,7 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
   const rafIdRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
   const [xrRequested, setXrRequested] = useState(false);
+  const [xrActive, setXrActive] = useState(false);
   const [localWebXRSupport, setLocalWebXRSupport] = useState(false);
 
   useImperativeHandle(ref, () => ({
@@ -42,6 +43,7 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
         domOverlay: { root: overlayElement }
       });
       xrSessionRef.current = session;
+      setXrActive(true);
 
       const canvas = canvasRef.current;
       const gl = canvas.getContext('webgl', { xrCompatible: true });
@@ -60,6 +62,7 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
 
       session.addEventListener('end', () => {
         xrSessionRef.current = null;
+        setXrActive(false);
         if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
         setLatestXRMatrix(null);
       });
@@ -114,7 +117,7 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
       <canvas ref={canvasRef} className="hidden" width={1} height={1} />
       <video
         ref={videoRef}
-        className="absolute inset-0 w-full h-full object-cover"
+        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${xrActive ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         playsInline
         autoPlay
         muted
