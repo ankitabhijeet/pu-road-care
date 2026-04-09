@@ -135,6 +135,8 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
   }, [startCamera]);
 
   const handleTapToFocus = useCallback(async (e) => {
+    // Only trigger if we click the video itself or the direct container
+    if (e.target !== e.currentTarget && e.target.tagName !== 'VIDEO') return;
     if (!videoRef.current || !streamRef.current) return;
 
     const rect = videoRef.current.getBoundingClientRect();

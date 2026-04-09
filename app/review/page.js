@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ReviewCard from '@/components/ReviewCard';
 import { packageCaptures } from '@/lib/packager';
-import { saveCapture } from '@/lib/storage';
+import { saveCapture, getTempCaptures, clearTempCaptures } from '@/lib/storage';
 import { CAPTURE_STEPS } from '@/lib/constants';
 
 export default function ReviewPage() {
@@ -16,38 +16,41 @@ export default function ReviewPage() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    // Retrieve captures from the global variable set by capture page
-    const data = window.__puRoadCareCaptures;
-    if (data && data.length === 4) {
-      setCaptures(data);
-    } else {
-      // Try to recover from sessionStorage for display
+    async function loadCaptures() {
       try {
-        const stored = sessionStorage.getItem('reviewCaptures');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          // We only have thumbnails and sensors, not blobs — display-only mode
-          setCaptures(parsed.map((p) => ({ ...p, blob: new Blob([]) })));
+        const data = await getTempCaptures();
+        if (data && data.length === 4) {
+          setCaptures(data);
         } else {
-          router.push('/capture');
+          // If incomplete, check sessionStorage to see if we should at least show thumbnails
+          const stored = sessionStorage.getItem('reviewCaptures');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            // Hybrid recovery: Use thumbnails for display if blobs are somehow missing in store
+            setCaptures(parsed.map((p) => ({ ...p, blob: new Blob([]) })));
+          } else {
+            router.push('/capture');
+          }
         }
-      } catch {
+      } catch (err) {
+        console.error('Failed to load temp captures:', err);
         router.push('/capture');
       }
     }
+    loadCaptures();
   }, [router]);
 
   const handleSave = async () => {
-    if (isSaving || !captures || !window.__puRoadCareCaptures) return;
+    if (isSaving || !captures) return;
     setIsSaving(true);
 
     try {
-      const realCaptures = window.__puRoadCareCaptures;
-      const { blob, name, metadata } = await packageCaptures(realCaptures);
+      // Use the actual captures array in state (loaded from getTempCaptures)
+      const { blob, name, metadata } = await packageCaptures(captures);
       await saveCapture(name, blob, metadata);
 
-      // Clean up
-      delete window.__puRoadCareCaptures;
+      // Clean up EVERYTHING
+      await clearTempCaptures();
       sessionStorage.removeItem('reviewCaptures');
 
       setSaved(true);
@@ -62,7 +65,7 @@ export default function ReviewPage() {
   };
 
   const handleRetake = () => {
-    delete window.__puRoadCareCaptures;
+    clearTempCaptures();
     sessionStorage.removeItem('reviewCaptures');
     router.push('/capture');
   };

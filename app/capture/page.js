@@ -7,6 +7,7 @@ import CaptureGuide from '@/components/CaptureGuide';
 import { capturePhoto } from '@/lib/capture';
 import { startSensors, stopSensors, hasGpsLock, getGpsAccuracy } from '@/lib/sensors';
 import { CAPTURE_STEPS } from '@/lib/constants';
+import { saveTempCapture, clearTempCaptures } from '@/lib/storage';
 
 export default function CapturePage() {
   const router = useRouter();
@@ -18,9 +19,10 @@ export default function CapturePage() {
   const [gpsStatus, setGpsStatus] = useState('searching');
   const [cameraReady, setCameraReady] = useState(false);
 
-  // Start sensors on mount
+  // Start sensors and clear temp on mount
   useEffect(() => {
     startSensors();
+    clearTempCaptures();
 
     // GPS status polling
     const gpsInterval = setInterval(() => {
@@ -51,6 +53,9 @@ export default function CapturePage() {
       setTimeout(() => setShowFlash(false), 400);
 
       const result = await capturePhoto(videoEl);
+      
+      // Save to IndexedDB immediately for reliability
+      await saveTempCapture(currentStep, result.blob, result.sensors, result.thumbnail);
 
       const newCaptures = [...captures, result];
       setCaptures(newCaptures);
@@ -62,17 +67,14 @@ export default function CapturePage() {
         cameraRef.current?.stopCamera();
         stopSensors();
 
-        // Store captures in sessionStorage for review page
-        const capturesForStorage = newCaptures.map((c) => ({
+        // Store metadata in sessionStorage for quick UI reference
+        const capturesForStorage = newCaptures.map((c, i) => ({
           thumbnail: c.thumbnail,
           sensors: c.sensors,
           blobSize: c.blob.size,
+          stepId: i
         }));
         sessionStorage.setItem('reviewCaptures', JSON.stringify(capturesForStorage));
-
-        // Store blobs separately (sessionStorage can't hold blobs)
-        // Use a global variable for same-session transfer
-        window.__puRoadCareCaptures = newCaptures;
 
         router.push('/review');
       }
