@@ -89,6 +89,27 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
         videoRef.current.setAttribute('playsinline', '');
         videoRef.current.setAttribute('autoplay', '');
         await videoRef.current.play();
+
+        // Attempt to enable continuous focus if supported
+        const track = stream.getVideoTracks()[0];
+        if (track && 'applyConstraints' in track) {
+          const capabilities = track.getCapabilities?.() || {};
+          const constraints = {};
+
+          if (capabilities.focusMode?.includes('continuous')) {
+            constraints.focusMode = 'continuous';
+          }
+          if (capabilities.whiteBalanceMode?.includes('continuous')) {
+            constraints.whiteBalanceMode = 'continuous';
+          }
+
+          if (Object.keys(constraints).length > 0) {
+            track.applyConstraints({ advanced: [constraints] }).catch(err => {
+              console.warn('Failed to apply advanced camera constraints:', err);
+            });
+          }
+        }
+
         setIsReady(true);
         onReady?.();
       }
