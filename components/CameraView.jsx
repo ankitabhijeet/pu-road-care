@@ -1,21 +1,12 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
 import { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { checkWebXRSupport } from '@/lib/permissions';
-import { setLatestXRMatrix } from '@/lib/sensors';
 
 const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  const xrSessionRef = useRef(null);
-  const rafIdRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
-  const [xrRequested, setXrRequested] = useState(false);
-  const [xrActive, setXrActive] = useState(false);
-  const [localWebXRSupport, setLocalWebXRSupport] = useState(false);
 
   useImperativeHandle(ref, () => ({
     getVideoElement: () => videoRef.current,
@@ -24,52 +15,8 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
-      if (xrSessionRef.current) {
-        xrSessionRef.current.end().catch(console.error);
-        xrSessionRef.current = null;
-      }
-      setLatestXRMatrix(null);
     },
   }));
-
-  const startWebXR = useCallback(async () => {
-    try {
-      const supported = await checkWebXRSupport();
-      if (!supported) return;
-
-      const overlayElement = document.getElementById('ar-ui-overlay') || document.body;
-      const session = await navigator.xr.requestSession('immersive-ar', {
-        requiredFeatures: ['local', 'dom-overlay'],
-        domOverlay: { root: overlayElement }
-      });
-      xrSessionRef.current = session;
-      setXrActive(true);
-
-      const canvas = canvasRef.current;
-      const gl = canvas.getContext('webgl', { xrCompatible: true });
-      session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
-
-      const refSpace = await session.requestReferenceSpace('local');
-
-      const onXRFrame = (time, frame) => {
-        const pose = frame.getViewerPose(refSpace);
-        if (pose) {
-          setLatestXRMatrix(pose.transform.matrix);
-        }
-        rafIdRef.current = session.requestAnimationFrame(onXRFrame);
-      };
-      rafIdRef.current = session.requestAnimationFrame(onXRFrame);
-
-      session.addEventListener('end', () => {
-        xrSessionRef.current = null;
-        setXrActive(false);
-        if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
-        setLatestXRMatrix(null);
-      });
-    } catch (err) {
-      console.warn('WebXR AR failed to start:', err);
-    }
-  }, []);
 
   const startCamera = useCallback(async () => {
     try {
@@ -99,25 +46,20 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
   }, [onReady, onError]);
 
   useEffect(() => {
-    checkWebXRSupport().then(setLocalWebXRSupport);
     startCamera();
 
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
-      if (xrSessionRef.current) {
-        xrSessionRef.current.end().catch(console.error);
-      }
     };
   }, [startCamera]);
 
   return (
     <>
-      <canvas ref={canvasRef} className="hidden" width={1} height={1} />
       <video
         ref={videoRef}
-        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${xrActive ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+        className="absolute inset-0 w-full h-full object-cover"
         playsInline
         autoPlay
         muted
@@ -133,8 +75,6 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
           </div>
         </div>
       )}
-
-      {/* WebXR was here, but removed due to camera hardware locking on iOS WebXR Viewers */}
     </>
   );
 });

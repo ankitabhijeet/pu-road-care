@@ -2,10 +2,10 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import StatusBadge from './StatusBadge';
-import { checkWebXRSupport, requestCamera, requestGeolocation, requestIMU } from '@/lib/permissions';
+import { requestCamera, requestGeolocation, requestIMU } from '@/lib/permissions';
 
 const PERMISSION_CARDS = [
   {
@@ -51,11 +51,6 @@ export default function PermissionsGate() {
   });
   const [isRequesting, setIsRequesting] = useState(false);
   const [error, setError] = useState(null);
-  const [hasWebXR, setHasWebXR] = useState(false);
-
-  useEffect(() => {
-    checkWebXRSupport().then(supported => setHasWebXR(supported));
-  }, []);
 
   const handleGrantAll = useCallback(async () => {
     setIsRequesting(true);
@@ -67,10 +62,7 @@ export default function PermissionsGate() {
     // to be called in the DIRECT call stack of a user gesture (tap). After any async dialog
     // (camera/geo), iOS considers the gesture expired and silently denies IMU access.
     setPermissions((p) => ({ ...p, imu: 'loading' }));
-    let imuResult = 'granted';
-    if (!hasWebXR) {
-      imuResult = await requestIMU();
-    }
+    let imuResult = await requestIMU();
     const imuOk = imuResult === 'granted' || imuResult === 'not_required';
     setPermissions((p) => ({ ...p, imu: imuOk ? 'granted' : 'denied' }));
     if (!imuOk) denied.push('Motion Sensors');
@@ -101,7 +93,7 @@ export default function PermissionsGate() {
     }
 
     setIsRequesting(false);
-  }, [router, hasWebXR]);
+  }, [router]);
 
   const allGranted = Object.values(permissions).every(
     (v) => v === 'granted' || v === 'not_required'
@@ -111,10 +103,8 @@ export default function PermissionsGate() {
     <div className="flex flex-col items-center w-full max-w-md mx-auto stagger-children">
       {/* Permission Cards */}
       {PERMISSION_CARDS.map((card) => {
-        const title = (hasWebXR && card.key === 'imu') ? 'AR Tracking (WebXR)' : card.title;
-        const desc = (hasWebXR && card.key === 'imu') 
-          ? 'Use native AR/VIO for metric 3D scale tracking' 
-          : card.description;
+        const title = card.title;
+        const desc = card.description;
 
         return (
           <div
