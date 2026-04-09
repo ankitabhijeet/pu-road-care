@@ -15,6 +15,7 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
   const [xrRequested, setXrRequested] = useState(false);
   const [xrActive, setXrActive] = useState(false);
   const [localWebXRSupport, setLocalWebXRSupport] = useState(false);
+  const [focusIndicator, setFocusIndicator] = useState(null); // { x, y } in pixels
 
   useImperativeHandle(ref, () => ({
     getVideoElement: () => videoRef.current,
@@ -133,16 +134,80 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
     };
   }, [startCamera]);
 
+  const handleTapToFocus = useCallback(async (e) => {
+    if (!videoRef.current || !streamRef.current) return;
+
+    const rect = videoRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Show visual indicator
+    setFocusIndicator({ x, y });
+    setTimeout(() => setFocusIndicator(null), 1500);
+
+    // Trigger focus reset
+    const track = streamRef.current.getVideoTracks()[0];
+    if (track && 'applyConstraints' in track) {
+      try {
+        const capabilities = track.getCapabilities?.() || {};
+        const constraints = { advanced: [] };
+
+        // Attempt to focus at specific point if supported (0 to 1 range)
+        if (capabilities.focusMode?.includes('continuous')) {
+          const poi = {
+            x: x / rect.width,
+            y: y / rect.height,
+          };
+          
+          // Force a "hunt" by switching modes briefly
+          await track.applyConstraints({
+            advanced: [{ focusMode: 'manual' }]
+          });
+          
+          await track.applyConstraints({
+            advanced: [{ 
+              focusMode: 'continuous',
+              pointsOfInterest: [poi]
+            }]
+          });
+        }
+      } catch (err) {
+        console.warn('Manual focus adjustment failed:', err);
+      }
+    }
+  }, []);
+
   return (
     <>
       <canvas ref={canvasRef} className="hidden" width={1} height={1} />
-      <video
-        ref={videoRef}
-        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${xrActive ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
-        playsInline
-        autoPlay
-        muted
-      />
+      <div 
+        className="absolute inset-0 w-full h-full overflow-hidden"
+        onClick={handleTapToFocus}
+      >
+        <video
+          ref={videoRef}
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${xrActive ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          playsInline
+          autoPlay
+          muted
+        />
+
+        {/* Focus Indicator Ring */}
+        {focusIndicator && (
+          <div 
+            className="absolute pointer-events-none border-2 border-accent-light w-16 h-16 rounded-lg animate-scale-in"
+            style={{ 
+              left: focusIndicator.x, 
+              top: focusIndicator.y,
+              transform: 'translate(-50%, -50%)',
+              boxShadow: '0 0 20px rgba(129, 140, 248, 0.4)',
+              transition: 'all 0.2s ease-out'
+            }}
+          >
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 bg-accent-light rounded-full" />
+          </div>
+        )}
+      </div>
       {!isReady && (
         <div className="absolute inset-0 flex items-center justify-center bg-black z-10">
           <div className="flex flex-col items-center gap-3">
