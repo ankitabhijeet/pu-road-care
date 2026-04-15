@@ -91,10 +91,10 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
         videoRef.current.setAttribute('autoplay', '');
         await videoRef.current.play();
 
-        // Attempt to enable continuous focus if supported
+        // Attempt to enable continuous focus ONLY if supported by hardware
         const track = stream.getVideoTracks()[0];
         if (track && 'applyConstraints' in track) {
-          const capabilities = track.getCapabilities?.() || {};
+          const capabilities = (typeof track.getCapabilities === 'function') ? track.getCapabilities() : {};
           const constraints = {};
 
           if (capabilities.focusMode?.includes('continuous')) {
@@ -106,7 +106,7 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
 
           if (Object.keys(constraints).length > 0) {
             track.applyConstraints({ advanced: [constraints] }).catch(err => {
-              console.warn('Failed to apply advanced camera constraints:', err);
+              console.warn('Initial camera constraints failed:', err);
             });
           }
         }
@@ -147,24 +147,19 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
     setFocusIndicator({ x, y });
     setTimeout(() => setFocusIndicator(null), 1500);
 
-    // Trigger focus reset
+    // Trigger focus reset OR nudge the stream
     const track = streamRef.current.getVideoTracks()[0];
     if (track && 'applyConstraints' in track) {
       try {
-        const capabilities = track.getCapabilities?.() || {};
-        const constraints = { advanced: [] };
-
-        // Attempt to focus at specific point if supported (0 to 1 range)
+        const capabilities = (typeof track.getCapabilities === 'function') ? track.getCapabilities() : {};
+        
+        // ONLY apply hardware focus if the browser explicitly says it can
+        // iOS Safari does NOT expose focusMode capability, so we skip this to avoid freezes
         if (capabilities.focusMode?.includes('continuous')) {
           const poi = {
             x: x / rect.width,
             y: y / rect.height,
           };
-          
-          // Force a "hunt" by switching modes briefly
-          await track.applyConstraints({
-            advanced: [{ focusMode: 'manual' }]
-          });
           
           await track.applyConstraints({
             advanced: [{ 
@@ -173,8 +168,17 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
             }]
           });
         }
+        
+        // iOS "Stream Nudge": resetting the video feed activity often fixes stalls
+        if (videoRef.current.paused) {
+          await videoRef.current.play();
+        }
       } catch (err) {
-        console.warn('Manual focus adjustment failed:', err);
+        console.warn('Manual focus reset failed:', err);
+        // Emergency recovery for stalled stream
+        if (videoRef.current) {
+          videoRef.current.play().catch(() => {});
+        }
       }
     }
   }, []);
