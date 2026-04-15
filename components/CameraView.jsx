@@ -2,20 +2,12 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { checkWebXRSupport } from '@/lib/permissions';
-import { setLatestXRMatrix } from '@/lib/sensors';
 
 const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  const xrSessionRef = useRef(null);
-  const rafIdRef = useRef(null);
   const [isReady, setIsReady] = useState(false);
-  const [xrRequested, setXrRequested] = useState(false);
-  const [xrActive, setXrActive] = useState(false);
-  const [localWebXRSupport, setLocalWebXRSupport] = useState(false);
-  const [focusIndicator, setFocusIndicator] = useState(null); // { x, y } in pixels
+  const [focusIndicator, setFocusIndicator] = useState(null);
 
   useImperativeHandle(ref, () => ({
     getVideoElement: () => videoRef.current,
@@ -24,56 +16,12 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
-      if (xrSessionRef.current) {
-        xrSessionRef.current.end().catch(console.error);
-        xrSessionRef.current = null;
-      }
-      setLatestXRMatrix(null);
     },
   }));
 
-  const startWebXR = useCallback(async () => {
-    try {
-      const supported = await checkWebXRSupport();
-      if (!supported) return;
-
-      const overlayElement = document.getElementById('ar-ui-overlay') || document.body;
-      const session = await navigator.xr.requestSession('immersive-ar', {
-        requiredFeatures: ['local', 'dom-overlay'],
-        domOverlay: { root: overlayElement }
-      });
-      xrSessionRef.current = session;
-      setXrActive(true);
-
-      const canvas = canvasRef.current;
-      // explicitly enforce alpha:true on the WebGL boundary just in case
-      const gl = canvas.getContext('webgl', { xrCompatible: true, alpha: true });
-      session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
-
-      const refSpace = await session.requestReferenceSpace('local');
-
-      const onXRFrame = (time, frame) => {
-        const pose = frame.getViewerPose(refSpace);
-        if (pose) {
-          setLatestXRMatrix(pose.transform.matrix);
-        }
-        rafIdRef.current = session.requestAnimationFrame(onXRFrame);
-      };
-      rafIdRef.current = session.requestAnimationFrame(onXRFrame);
-
-      session.addEventListener('end', () => {
-        xrSessionRef.current = null;
-        setXrActive(false);
-        if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
-        setLatestXRMatrix(null);
-      });
-    } catch (err) {
-      console.warn('WebXR AR failed to start:', err);
-    }
-  }, []);
-
   const startCamera = useCallback(async () => {
     try {
+      // Request the rear camera at high quality
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
@@ -87,28 +35,16 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute('playsinline', '');
-        videoRef.current.setAttribute('autoplay', '');
-        await videoRef.current.play();
+        // Critical: ensure these attributes are set before play()
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.setAttribute('muted', 'true');
+        videoRef.current.muted = true;
 
-        // Attempt to enable continuous focus ONLY if supported by hardware
-        const track = stream.getVideoTracks()[0];
-        if (track && 'applyConstraints' in track) {
-          const capabilities = (typeof track.getCapabilities === 'function') ? track.getCapabilities() : {};
-          const constraints = {};
-
-          if (capabilities.focusMode?.includes('continuous')) {
-            constraints.focusMode = 'continuous';
-          }
-          if (capabilities.whiteBalanceMode?.includes('continuous')) {
-            constraints.whiteBalanceMode = 'continuous';
-          }
-
-          if (Object.keys(constraints).length > 0) {
-            track.applyConstraints({ advanced: [constraints] }).catch(err => {
-              console.warn('Initial camera constraints failed:', err);
-            });
-          }
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          // Some browsers need a user gesture; will still work on tap
+          console.warn('Autoplay blocked, stream ready for manual play:', playErr);
         }
 
         setIsReady(true);
@@ -121,99 +57,81 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
   }, [onReady, onError]);
 
   useEffect(() => {
-    checkWebXRSupport().then(setLocalWebXRSupport);
     startCamera();
 
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
-      }
-      if (xrSessionRef.current) {
-        xrSessionRef.current.end().catch(console.error);
+        streamRef.current = null;
       }
     };
   }, [startCamera]);
 
+  // Tap-to-focus: safe implementation that does NOT call applyConstraints
+  // unless the hardware explicitly supports pointsOfInterest.
+  // This avoids iOS WebKit video stalls entirely.
   const handleTapToFocus = useCallback(async (e) => {
-    // Only trigger if we click the video itself or the direct container
-    if (e.target !== e.currentTarget && e.target.tagName !== 'VIDEO') return;
     if (!videoRef.current || !streamRef.current) return;
 
     const rect = videoRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // Show visual indicator
+    // Show visual focus ring at tap location
     setFocusIndicator({ x, y });
-    setTimeout(() => setFocusIndicator(null), 1500);
+    setTimeout(() => setFocusIndicator(null), 1200);
 
-    // Trigger focus reset OR nudge the stream
+    // Try hardware focus ONLY on devices that explicitly support pointsOfInterest
     const track = streamRef.current.getVideoTracks()[0];
-    if (track && 'applyConstraints' in track) {
+    if (!track || typeof track.getCapabilities !== 'function') return;
+
+    const capabilities = track.getCapabilities();
+    const supportsPOI = Array.isArray(capabilities.pointsOfInterest);
+
+    if (supportsPOI) {
       try {
-        const capabilities = (typeof track.getCapabilities === 'function') ? track.getCapabilities() : {};
-        
-        // ONLY apply hardware focus if the browser explicitly says it can
-        // iOS Safari does NOT expose focusMode capability, so we skip this to avoid freezes
-        if (capabilities.focusMode?.includes('continuous')) {
-          const poi = {
-            x: x / rect.width,
-            y: y / rect.height,
-          };
-          
-          await track.applyConstraints({
-            advanced: [{ 
-              focusMode: 'continuous',
-              pointsOfInterest: [poi]
-            }]
-          });
-        }
-        
-        // iOS "Stream Nudge": resetting the video feed activity often fixes stalls
-        if (videoRef.current.paused) {
-          await videoRef.current.play();
-        }
+        await track.applyConstraints({
+          advanced: [{
+            pointsOfInterest: [{ x: x / rect.width, y: y / rect.height }],
+          }],
+        });
       } catch (err) {
-        console.warn('Manual focus reset failed:', err);
-        // Emergency recovery for stalled stream
-        if (videoRef.current) {
-          videoRef.current.play().catch(() => {});
-        }
+        console.warn('pointsOfInterest focus failed:', err);
       }
     }
+    // On iOS/unsupported: show ring for UX feedback only — no hardware call
   }, []);
 
   return (
     <>
-      <canvas ref={canvasRef} className="hidden" width={1} height={1} />
-      <div 
+      {/* Live camera feed — fills parent absolutely */}
+      <div
         className="absolute inset-0 w-full h-full overflow-hidden"
         onClick={handleTapToFocus}
       >
         <video
           ref={videoRef}
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${xrActive ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          className="absolute inset-0 w-full h-full object-cover"
           playsInline
           autoPlay
           muted
         />
 
-        {/* Focus Indicator Ring */}
+        {/* Focus ring indicator */}
         {focusIndicator && (
-          <div 
-            className="absolute pointer-events-none border-2 border-accent-light w-16 h-16 rounded-lg animate-scale-in"
-            style={{ 
-              left: focusIndicator.x, 
+          <div
+            className="absolute pointer-events-none border-2 border-white w-14 h-14 rounded-lg"
+            style={{
+              left: focusIndicator.x,
               top: focusIndicator.y,
               transform: 'translate(-50%, -50%)',
-              boxShadow: '0 0 20px rgba(129, 140, 248, 0.4)',
-              transition: 'all 0.2s ease-out'
+              boxShadow: '0 0 0 1px rgba(0,0,0,0.4)',
             }}
-          >
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 bg-accent-light rounded-full" />
-          </div>
+          />
         )}
       </div>
+
+      {/* Loading overlay — shown until stream is live */}
       {!isReady && (
         <div className="absolute inset-0 flex items-center justify-center bg-black z-10">
           <div className="flex flex-col items-center gap-3">
@@ -224,43 +142,6 @@ const CameraView = forwardRef(function CameraView({ onReady, onError }, ref) {
             <p className="text-sm text-white/50">Starting camera...</p>
           </div>
         </div>
-      )}
-
-      {/* WebXR Optional Gesture Overlay */}
-      {isReady && localWebXRSupport && !xrRequested && (
-        <div 
-          className="absolute inset-0 z-40 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center"
-          onClick={() => {
-            setXrRequested(true);
-            startWebXR();
-          }}
-        >
-          <div className="bg-white/10 p-6 rounded-3xl border border-white/20 glass max-w-sm">
-            <svg className="w-12 h-12 text-accent-light mx-auto mb-4 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59" />
-            </svg>
-            <h3 className="text-xl font-bold text-white mb-2">Try AR Tracking Mode</h3>
-            <p className="text-sm text-white/70 mb-4">
-              Your browser supports WebXR! Tap here to try capturing the 3D Tracking Matrix alongside your photos.
-            </p>
-            <div className="bg-warning/10 text-warning text-xs p-3 rounded-lg text-left">
-              <strong>Warning:</strong> On some iOS browsers, activating this feature may turn the camera black. If that happens, simply reload the app and skip this step. The app will automatically fall back to the mathematically precise Camera Height measurement!
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Skip button for the AR overlay so they aren't trapped if they want normal capture but their phone registers WebXR logic! */}
-      {isReady && localWebXRSupport && !xrRequested && (
-        <button 
-          onClick={(e) => {
-            e.stopPropagation(); // prevent triggering AR
-            setXrRequested(true); // just hide the overlay
-          }}
-          className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 text-white/60 text-sm underline px-4 py-2"
-        >
-          Skip AR Tracking
-        </button>
       )}
     </>
   );
